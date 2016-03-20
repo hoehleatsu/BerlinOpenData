@@ -80,6 +80,6 @@ for (bez in tolower(bezirke)) {
   text(loc[bez,1],loc[bez,2],paste0(topMale$vorname,collapse=" "), col="blue",pos=1,offset=0.3)
   text(loc[bez,1],loc[bez,2],paste0(topFemale$vorname,collapse=" "), col="magenta",pos=3,offset=0.3)
 }
-title("Most common first name for newborns 2015\n in Berlin (female/male per Bezirk)")
+title("Most common first name for newborns in\n Berlin 2015 (female/male for each Bezirk)")
 dev.off()
 
