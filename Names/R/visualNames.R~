@@ -1,0 +1,31 @@
+library("rgdal")
+library("rgeos")
+library("dplyr")
+library("wordcloud")
+
+##Make an SpatialPolygon object containing the bezirke
+##Data available from Berlin Open Data
+##http://daten.berlin.de/datensaetze/rbs-lor-lebensweltlich-orientierte-r%C3%A4ume-dezember-2015
+map <- readOGR(dsn="../../LOR/RBS_OD_LOR_2015_12/",layer="RBS_OD_LOR_2015_12")
+bezmap <- gUnaryUnion(map, id=as(map,"data.frame")$BEZNAME)
+
+##Read first names given in 2015. Data available from Berlin Open Data
+##http://daten.berlin.de/datensaetze/liste-der-h%C3%A4ufigen-vornamen-2015
+bezirke <- names(bezmap)
+bezNames <- NULL
+for (bez in tolower(bezirke)) {
+  fileName <- paste0("../data/",bez,".csv")
+  fileName <- gsub("ö","oe",fileName)
+  theBez <- read.csv2(file=fileName)
+  theBez <- theBez %>% mutate(total=sum(anzahl),weight=anzahl/sum(anzahl))
+  bezNames <- rbind(bezNames, data.frame(theBez, bezirk=bez))
+}
+
+head(bezNames)
+
+#Create a map and add a word-cloud to the location
+plot(bezmap)
+for (bez in tolower(bezirke)) {
+  theBezNames <- bezNames %>% filter(bezirk==bez)
+
+}
