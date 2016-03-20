@@ -1,4 +1,16 @@
-#take from the wordcloud package
+######################################################################
+## Code take from the wordcloud package
+## https://cran.r-project.org/web/packages/wordcloud/
+##
+## by Ian Fellows <ian at fellstat.com> available under the LGPL-2.1
+## license
+##
+## Author: Michael Höhle <http://www.math.su.se/~hoehle>
+## Date:   2016-03-21
+##
+## This code is similarly available under the LGPL-2.1 license
+######################################################################
+
 mywordcloud <- function (words, freq, scale = c(4, 0.5), min.freq = 3, max.words = Inf,
     random.order = TRUE, random.color = FALSE, rot.per = 0.1,
     colors = "black", ordered.colors = FALSE, use.r.layout = FALSE,
