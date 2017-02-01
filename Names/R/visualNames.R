@@ -1,9 +1,9 @@
 ######################################################################
-## Illustrating names of newborns in Berlin 2015 per Bezirk using
+## Illustrating names of newborns in Berlin 2015/2016 per Bezirk using
 ## Berlin Open Data and #rstats.
 ##
 ## Author: Michael Höhle <http://www.math.su.se/~hoehle>
-## Date:   2016-03-21
+## Date:   2016-03-21, modified 2017-01-27
 ######################################################################
 
 library("rgdal")
@@ -22,8 +22,9 @@ bezmap <- gUnaryUnion(map, id=as(map,"data.frame")$BEZNAME)
 ##http://daten.berlin.de/datensaetze/liste-der-h%C3%A4ufigen-vornamen-2015
 bezirke <- names(bezmap)
 bezNames <- NULL
+year <- 2016
 for (bez in tolower(bezirke)) {
-  fileName <- paste0("../data/",bez,".csv")
+  fileName <- paste0("../data",year,"/",bez,".csv")
   fileName <- gsub("ö","oe",fileName) #renamed
   theBez <- read.csv2(file=fileName)
   theBez <- theBez %>% mutate(total=sum(anzahl),weight=anzahl/sum(anzahl))
@@ -45,7 +46,7 @@ pal <- paste0(pal,"1A")
 loc <- coordinates(bezmap)
 rownames(loc) <- tolower(rownames(loc))
 
-png(file="firstname.png",width=480,height=480,bg="white",pointsize=14)
+png(file=paste0("firstname-",year,".png"),width=480,height=480,bg="white",pointsize=14)
 par(mar=c(0,0,4.1,0))
 plot(bezmap,border=rgb(0.9,0.9,0.9))
 points(loc,cex=0.01)
@@ -56,7 +57,7 @@ for (bez in tolower(bezirke)) {
   text(loc[bez,1],loc[bez,2],paste0(topMale$vorname,collapse=" "), col="blue",pos=1,offset=0.3)
   text(loc[bez,1],loc[bez,2],paste0(topFemale$vorname,collapse=" "), col="magenta",pos=3,offset=0.3)
 }
-title("Most common first name for newborns 2015\n in Berlin (female/male per Bezirk)")
+title(paste0("Most common first name for newborns ",year,"\n in Berlin (female/male per Bezirk)"))
 dev.off()
 
 
@@ -65,7 +66,7 @@ dev.off()
 ##fancy #dataviz is used...just base graphics
 ######################################################################
 
-png(file="firstname-wordcloud.png",width=640,height=640,bg="white",pointsize=16)
+png(file=paste0("firstname-wordcloud-",year,".png"),width=640,height=640,bg="white",pointsize=16)
 par(mar=c(0,0,4.1,0))
 plot(bezmap,border=rgb(0.8,0.8,0.8))
 for (bez in tolower(bezirke)) {
@@ -80,6 +81,6 @@ for (bez in tolower(bezirke)) {
   text(loc[bez,1],loc[bez,2],paste0(topMale$vorname,collapse=" "), col="blue",pos=1,offset=0.3)
   text(loc[bez,1],loc[bez,2],paste0(topFemale$vorname,collapse=" "), col="magenta",pos=3,offset=0.3)
 }
-title("Most common first name for newborns in\n Berlin 2015 (female/male for each Bezirk)")
+title(paste0("Most common first name for newborns in\n Berlin ",year," (female/male for each Bezirk)"))
 dev.off()
 
