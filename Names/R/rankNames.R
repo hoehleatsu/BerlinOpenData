@@ -10,8 +10,8 @@ library("rgdal")
 library("rgeos")
 library("dplyr")
 library("magrittr")
-library("pbapply")
-library("tidyr")
+library("forcats")
+
 ##Make an SpatialPolygon object containing the Bezirke
 ##Data available from Berlin Open Data
 ##http://daten.berlin.de/datensaetze/rbs-lor-lebensweltlich-orientierte-r%C3%A4ume-dezember-2015
@@ -31,113 +31,111 @@ for (bez in tolower(bezirke)) {
   theBez <- theBez %>% mutate(total=sum(anzahl),weight=anzahl/sum(anzahl))
   bezNames <- rbind(bezNames, data.frame(theBez, bezirk=bez))
 }
-bezNames <- bezNames %>% mutate(strata=paste0(geschlecht,"-",vorname))
-allStrata <- bezNames %>% distinct(strata, .keep_all=TRUE)
+##Rename all columns and factor levels to english
+bezNames <- bezNames %>%
+  rename(firstname = vorname, count = anzahl, district = bezirk) %>%
+  mutate(sex = fct_recode(geschlecht, c("m"="m", "f"="w")))
 
-##Aggregate over bezirke and sort according to rank
-newborn <- bezNames %>% group_by(vorname, geschlecht) %>% summarise(anzahl=sum(anzahl)) %>% arrange(desc(anzahl))
-##Expanded dataset
-kids <- bezNames[rep(seq_len(nrow(bezNames)), times=bezNames$anzahl),]
-kids$anzahl <- 1
 
-kids %>% group_by(geschlecht) %>% summarise(n=n()) %>% mutate(frac=n/sum(n))
-
-p_sex <- prop.table(table(kids$geschlecht))
-kids$p_select <- p_sex[as.character(kids$geschlecht)]
-
-girls <- newborn %>% filter(geschlecht == "w")
-boys  < newborn %>% filter(geschlecht == "m")
+##Introduce a short unique strata identifier (geschlecht x vorname)
+bezNames <- bezNames %>% mutate(strata=paste0(sex,"-",firstname)) %>% select(-total,-weight,-geschlecht)
+rownames(bezNames) <- NULL
+write.csv(bezNames, file=paste0("berlin-firstnames-",year,".csv"),row.names=FALSE)
 
 ######################################################################
-## We assume
-stat <- function(x, idx=seq_len(nrow(x))) {
-  x_boot <- x[idx,] %>% group_by(vorname) %>% summarise(anzahl = sum(anzahl))
-  x_names <- data.frame(vorname=unique(x$vorname))
-  x_joined <- left_join(x_names, x_boot, by="vorname") %>%
-    mutate(anzahl=ifelse(is.na(anzahl),0, anzahl),
-           rank=rank(-anzahl, ties.method="min"))
-  return(x_joined$rank)
-}
+## Done with data wrangling
+######################################################################
 
-boys_exp <- boys[rep(seq_len(nrow(boys)), boys$anzahl), ] %>% mutate(anzahl=1)
+bezNames <- read.csv(file=paste0("berlin-firstnames-",year,".csv"))
 
-r_obs <- stat(boys_exp, sample(1:nrow(boys_exp), size=nrow(boys_exp), replace=TRUE))
-r_boot <- replicate( 999, stat(boys_exp,  sample(1:nrow(boys_exp), size=nrow(boys_exp), replace=TRUE)))
-r <- cbind(r_obs, r_boot)
+bezNames %>% filter(firstname == "")
 
-foo <- data.frame(boys, rank=as.data.frame(t(apply(r, 1, quantile, prob=c(0.025, 0.975)))))
-foo %>% filter(row_number() <= 10)
+##Make a data.frame containing all possible strata of gender and firstname.
+##This is how our return should look every time
+allStrata <- bezNames %>% distinct(strata, .keep_all=TRUE) %>% mutate(count=0)
+
+##Aggregate district stratified data over district and sort according to rank
+newborn <- bezNames %>% group_by(firstname, sex) %>%
+  summarise(count=sum(count)) %>% group_by(firstname, sex)
+
+##Result ordered
+newborn %>% arrange(desc(count)) %>% group_by(sex) %>% do({head(.,n=5)})
+
+
+##Expanded dataset, containing one row for each kid (can this be done dplyr style?)
+kids <- bezNames[rep(seq_len(nrow(bezNames)), times=bezNames$count),] %>%
+  mutate(count=1)
+
+##Check gender distribution
+kids %>% group_by(sex) %>% summarise(n=n()) %>% mutate(fraction=n/sum(n))
+##Old R style to get a named vector
+p_sex <- prop.table(table(kids$sex))
+##Sex ratio
+p_sex["m"]/p_sex["f"]
+
+##p_sex <- c("m"=0.01,"w"=0.99)
+##Add a selection probability column based on sex
+kids$p_select <- p_sex[as.character(kids$sex)]
 
 
 ######################################################################
-## Sample gender
+## Sample straified within each district
 ######################################################################
 
-p_sex <- prop.table(table(kids$geschlecht))
+rank_boot <- function(x,  idx=seq_len(nrow(x))) {
+  ##Summarise how many times each first name appears in the
+  ##bootstrapped data set.  Append a data.frame containing all
+  ##sex-firstname strata (so they appears in the group_by but each
+  ##containing zero counts.
+  x_boot <- x %>% slice(idx) %>% bind_rows(allStrata)
 
-stat2 <- function(x) {
-  x <- x %>% ungroup %>% mutate(rank=rank(-anzahl, ties.method="min"))
-  return(x %$% rank)
+  ##Summarise the number of occurences for each sex-firstname strata
+  ##and compute the ranks. Important: the grouping has to be in the
+  ##same order newborn, which groups by firstname and then sex.
+  aggrx_wranks <- x_boot %>%  group_by(firstname,sex) %>%
+    summarise(count = sum(count)) %>%
+    group_by(sex) %>%
+    mutate(rank=rank(-count, ties.method="min")) %>%
+    group_by(firstname,sex)
+
+  ##Done
+  return(aggrx_wranks %$% rank)
 }
 
-stat2_sample <- function(x, n_total=sum(kids$anzahl), prob) {
-  n <- rbinom(1, size=n_total,prob=prob)
-  x_boot <- data.frame(vorname=sample(x$vorname, size=n, replace=TRUE, prob=x$anzahl),anzahl=1) %>% group_by(vorname) %>% summarise(anzahl = sum(anzahl))
-  x_names <- data.frame(vorname=unique(x$vorname))
-  x_joined <- left_join(x_names, x_boot, by="vorname") %>%
-    mutate(anzahl=ifelse(is.na(anzahl),0, anzahl))
-  stat2(x_joined)
-}
-
-ranks_sample <- function(x, R=999) {
-  ##Which sex are we looking at? (implicit: all the same)
-  geschlecht <- x[1,] %$% geschlecht %>% as.character
-
-  ##Compute actual ranks
-  r_obs <- x %>% stat2
-
-  ##Bootstrap the ranks
-  r_boot <- pbreplicate( R, stat2_sample(x, prob=p_sex[geschlecht]))
-
-  ##Join
-  res <- data.frame(vorname=x$vorname, q=t(apply(cbind(r_obs, r_boot),1, quantile,prob=c(0.025,0.975))))
-  res
-}
 
 
 set.seed(123)
-kids_wranks <- kids %>% group_by(geschlecht) %>% do( {
-  ranks <- ranks_sample(.)
-  return(ranks)
-})
+##debug("stat") ; stat(kids)
+##Bootstrap within strata districts.
+b <- boot::boot(kids, statistic=rank_boot, R=999, strata=kids$district, weights=kids$p_select)
 
+##Percentile based 95% CI for the ranks. Note: We ensured that the
+##ranks returned by the stat function are in the same order as
+##newborn.
+newborn_ranks <- data.frame(newborn[,c("firstname","sex")], rank=stat(kids),rankci=t(apply(cbind(b$t0, t(b$t)),1,quantile, prob=c(0.05,0.95),type=3))) %>% tbl_df
+
+##Show top-10 rank for each gender
+newborn_ranks %>% group_by(sex) %>% arrange(rank) %>% do({ head(., n=10) })
+
+##Use lower CI
+newborn_ranks %>% group_by(sex) %>% arrange(`rankci.5.`) %>% select(firstname, sex, rankci.5.) %>% do({ head(.) })
+
+nb_rankswunc <- newborn_ranks %>% group_by(sex, rankci.5.) %>% do( {
+  data.frame(uc_rank=.$rankci.5.[1], names=paste(.$firstname, collapse=", "))
+}) %>% group_by(sex) %>% select(uc_rank, names)
+
+
+nb_rankswunc %>% filter(sex == "f")
+nb_rankswunc %>% filter(sex == "m")
 
 ######################################################################
-## Sample straified within each bezirk
+##
 ######################################################################
 
-stat <- function(x,  idx=seq_len(nrow(x))) {
-  x_boot <- x[idx,] %>% group_by(geschlecht,vorname) %>% summarise(anzahl = sum(anzahl)) %>% mutate(strata=paste0(geschlecht,"-",vorname))
+##Determine probabilty of being sampled in each sex strata.
+bezNames_pro <- bezNames %>% group_by(sex, district) %>% mutate(prob=count/sum(count))
 
-  x_joined <- left_join(allStrata, x_boot, by="strata") %>%
-    mutate(anzahl=ifelse(is.na(anzahl.y),0, anzahl.y)) %>%
-    group_by(geschlecht.x) %>%
-    mutate(rank=rank(-anzahl, ties.method="min"))
-  return(x_joined$rank)
+
+one_sample <- function(newborn) {
+  ##How many boys-> girl and how many girls-> boys in each district
 }
-
-
-                                        #theRanks <- stat(kids)
-set.seed(123)
-#debug("stat")
-b <- boot::boot(kids, statistic=stat, R=999, strata=kids$bezirk, weights=kids$p_select)
-
-rankCI <- cbind(allStrata[,c("vorname","geschlecht")], rankci=t(apply(cbind(b$t0, t(b$t)),1,quantile, prob=c(0.05,0.95),type=3))) %>% group_by(geschlecht)
-
-rankCI$theRank <- stat(kids)
-rankCI <- rankCI %>% select(vorname, geschlecht, theRank, `rankci.5%`, `rankci.95%`)
-
-rankCI %>% arrange(theRank) %>% do({ head(.) })
-
-rankCI %>% arrange(`rankci.5%`) %>% do({ head(.) })
-
