@@ -12,5 +12,5 @@ the [Names/R](Names/R) folder for the appropriate R code. The file
 
 contains all the details.
 
-![Karte](/Names/R/firstname-wordcloud.png)
+![Collision probabilities](/Names/R/collisionprob-berlin.png)
 
