@@ -10,6 +10,7 @@ library("rgdal")
 library("rgeos")
 library("dplyr")
 library("wordcloud")
+library("magrittr")
 source("mywordcloud.R")
 
 ##If you are unhappy about the colours, change them here
@@ -225,3 +226,24 @@ ggsave(filename="gini-berlin.png",width=7, height=4.5, dpi=72*1.5)
 
 
 
+######################################################################
+## Josef-Index
+######################################################################
+
+##theName <- "Josef" ; theColor <- "lightblue"
+theName <- "Sabine" ; theColor <- "salmon2"
+
+##Empty frame with zero entries to avoid the zero-bug
+zeropad <- expand.grid(vorname=theName,geschlecht=NA,anzahl=0, year=bezNames %$% year %>% unique, bezirkDE=bezNames %$% bezirkDE %>% unique)
+
+##Count
+name <- rbind(zeropad, bezNames %>% select(-total,-weight,-bezirk) %>%
+                       filter(vorname == theName)) %>%
+  group_by(bezirkDE,year) %>% summarise(anzahl=sum(anzahl))
+
+
+ggplot(name, aes(x=year, y=anzahl)) + geom_line(color="steelblue") + geom_point(color="indianred3") + facet_wrap(~ bezirkDE) + ggtitle(paste0("Kinder mit dem Namen '",theName,"' in Berlin ",paste0(range(name$year),collapse="-"))) + ylab("Anzahl") + xlab("Jahr") + theme(axis.text.x=element_text(angle = 45, vjust = 0.5),strip.background = element_rect(fill=theColor)) + scale_y_continuous(breaks=scales::pretty_breaks())
+
+ggsave(filename=paste0(theName,"-berlin.png"),width=7, height=4.5, dpi=72*1.5)
+
+#Josef- & Sabinetrends in den Berliner Bezirken: http://www.morgenpost.de/kolumne/Zwischenmenschlich/article210008739/Wenn-Hipstereltern-ihren-Kindern-absurde-Namen-geben.html … @nina_paulsen @morgenpost @OpenDataBerlin #ddj #rettetjosef
